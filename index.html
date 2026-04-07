@@ -11,6 +11,7 @@
 
   :root {
     --navy: #0a1628;
+    --navy2: #162d4e;
     --accent: #2563eb;
     --green: #15803d;
     --red: #b91c1c;
@@ -46,6 +47,7 @@
   .cabinet-header { background: var(--navy); color: #fff; padding: 16px; display: flex; justify-content: space-between; align-items: center; font-family: var(--mono); font-size: 12px; }
   .screen { flex: 1; padding: 20px; display: flex; flex-direction: column; }
   
+  .login-card { margin-top: 40px; padding: 20px; text-align: center; }
   .form-group { text-align: left; margin-bottom: 15px; width: 100%; }
   .form-group label { display: block; font-size: 11px; font-family: var(--mono); color: var(--text2); margin-bottom: 5px; }
   
@@ -60,20 +62,29 @@
   }
   select.form-input { appearance: auto; cursor: pointer; }
 
+  .error-msg { background: #fef2f2; color: var(--red); font-size: 12px; font-family: var(--mono); padding: 10px; border-radius: 6px; border: 1px solid #fecaca; margin-bottom: 20px; display: none; }
+
   .data-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
   .data-table th { background: #f8f9fa; padding: 12px; text-align: left; font-family: var(--mono); font-size: 11px; border-bottom: 2px solid var(--border); }
   .data-table td { padding: 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
 
+  /* Centered headers for the Master Sheet exclusively */
   .master-view .data-table th, 
   .master-view .data-table td { text-align: center; }
 
-  .btn { padding: 12px 24px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--sans); }
+  .btn { padding: 12px 24px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--sans); margin: 0; }
   .btn-primary { background: var(--navy); color: #fff; }
+  .btn-secondary { background: #fff; border: 1px solid var(--border2); color: var(--text); }
   .btn-finish { background: var(--green); color: #fff; margin-top: auto; width: 100%; }
+
+  .tool-bar { display: flex; gap: 12px; margin-bottom: 24px; align-items: center; justify-content: flex-start; }
 
   .overlay { position: absolute; inset: 0; background: var(--navy); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; text-align: center; padding: 40px; }
   .spinner { width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.1); border-top-color: #fff; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  
+  .status-tag { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-family: var(--mono); }
+  .low-stock { color: var(--red); font-weight: 700; }
 </style>
 </head>
 <body>
@@ -101,15 +112,25 @@ let state = {
   loadingMsg: ''
 };
 
-function switchWindow(win) { state.window = win; render(); }
+/* --- NAVIGATION --- */
+function switchWindow(win) {
+  state.window = win;
+  render();
+}
 
 function renderNav() {
   const nav = document.getElementById('nav-container');
   if (!state.currentUser) { nav.innerHTML = ''; return; }
-  let html = `<div class="global-nav"><div class="global-nav-item ${state.window === 'display' ? 'active' : ''}" onclick="switchWindow('display')">DISPLAY</div>`;
+
+  let html = `<div class="global-nav">
+    <div class="global-nav-item ${state.window === 'display' ? 'active' : ''}" onclick="switchWindow('display')">DISPLAY</div>`;
+  
   if (state.currentUser.email && state.currentUser.email.includes('yj')) {
-    html += `<div class="global-nav-item ${state.window === 'master' ? 'active' : ''}" onclick="switchWindow('master')">MASTER SHEET</div><div class="global-nav-item ${state.window === 'activity' ? 'active' : ''}" onclick="switchWindow('activity')">ACTIVITY</div>`;
+    html += `
+      <div class="global-nav-item ${state.window === 'master' ? 'active' : ''}" onclick="switchWindow('master')">MASTER SHEET</div>
+      <div class="global-nav-item ${state.window === 'activity' ? 'active' : ''}" onclick="switchWindow('activity')">ACTIVITY</div>`;
   }
+  
   html += `<div style="margin-left:auto; font-size:10px; opacity:0.5; cursor:pointer" onclick="logout()">LOGOUT</div></div>`;
   nav.innerHTML = html;
 }
@@ -119,11 +140,13 @@ function render() {
   if (!container) return;
   container.innerHTML = '';
   renderNav();
+
   if (state.window === 'display') renderDisplay(container);
   else if (state.window === 'master') renderMaster(container);
   else if (state.window === 'activity') renderActivity(container);
 }
 
+/* --- UI COMPONENTS --- */
 function renderDisplay(container) {
   const frame = document.createElement('div');
   frame.className = 'cabinet-frame';
@@ -135,8 +158,9 @@ function renderDisplay(container) {
   } else if (state.screen === 'login') {
     frame.innerHTML = `
       <div class="screen">
-        <div class="login-card" style="text-align:center; margin-top:40px;">
+        <div class="login-card">
           <h2 style="margin-bottom:30px">⚡ STIMS LOGIN</h2>
+          <div class="error-msg" id="error-box" style="${state.loginError ? 'display:block' : 'display:none'}">${state.loginError}</div>
           <div class="form-group">
             <label>EMAIL</label>
             <input type="text" id="user-input" class="form-input" placeholder="e.g. yj@molex.com" onkeyup="if(event.key==='Enter') handleAuth()">
@@ -152,38 +176,25 @@ function renderDisplay(container) {
     frame.innerHTML = `<div class="cabinet-header"><span>SELECT ACTION</span><span>${state.currentUser.email}</span></div><div class="screen"><div style="display:grid; gap:15px; margin-top:40px"><button class="btn btn-secondary" style="height:100px; width:100%" onclick="setMode('DRAW')">DRAW (OUT)</button><button class="btn btn-secondary" style="height:100px; width:100%" onclick="setMode('REPLENISH')">REPLENISH (IN)</button></div></div>`;
   } else if (state.screen === 'session') {
     const partOptions = inventory.map(i => `<option value="${i.name}">${i.name} — ${i.desc}</option>`).join('');
-    
-    // Dynamic row generation with Qty dropdown
-    const rows = state.sessionData.map((r, idx) => {
-      const target = inventory.find(i => i.name === r.name);
-      // Logic: Max replenish doesn't have a specific upper bound here, but Draw is capped by stock
-      const maxVal = state.mode === 'DRAW' ? target.qty : 100; 
-      let options = '';
-      for(let i=0; i<=maxVal; i++) {
-        options += `<option value="${i}" ${r.qty === i ? 'selected' : ''}>${i}</option>`;
-      }
-      
-      return `<tr>
-        <td>${r.name}</td>
-        <td>${target.qty}</td>
-        <td>
-          <select class="form-input" style="padding: 4px;" onchange="updateQty(${idx}, this.value)">
-            ${options}
-          </select>
-        </td>
-      </tr>`;
-    }).join('');
+    // Updated Row Template with Current Qty column
+    const rows = state.sessionData.map(r => `<tr><td>${r.name}</td><td>${r.currentQty}</td><td>${r.qty}</td></tr>`).join('');
     
     frame.innerHTML = `
       <div class="cabinet-header"><span>${state.mode} MODE</span></div>
       <div class="screen">
         <div class="form-group">
           <label>SELECT FROM LIST</label>
-          <select id="item-dropdown" class="form-input" onchange="handleSelection(this.value)">
+          <select id="item-dropdown" class="form-input">
             <option value="" disabled selected>Choose a tool...</option>
             ${partOptions}
           </select>
         </div>
+        <div class="form-group">
+          <label>QUANTITY</label>
+          <input type="number" id="qty-field" class="form-input" placeholder="0" min="1">
+        </div>
+        <button class="btn btn-primary" style="width:100%; margin-top:10px" onclick="addFromDropdown()">Add to List</button>
+        
         <table class="data-table" style="margin-top:20px">
           <thead><tr><th>Part No.</th><th>Current Qty</th><th>Qty</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -191,26 +202,68 @@ function renderDisplay(container) {
         <button class="btn btn-finish" onclick="finish()">FINISH & CLOSE DOOR</button>
       </div>`;
   }
+
   container.appendChild(frame);
 }
 
-/* --- LOGIC HANDLERS --- */
-function handleSelection(val) {
-  if(!val) return;
-  const exists = state.sessionData.find(item => item.name === val);
-  if(!exists) {
-    state.sessionData.push({ name: val, qty: 0 });
-    render();
-  }
-  document.getElementById('item-dropdown').value = ""; // Reset dropdown
+function renderMaster(container) {
+  const masterView = document.createElement('div');
+  masterView.className = 'master-view';
+  const toolBar = document.createElement('div');
+  toolBar.className = 'tool-bar';
+  toolBar.innerHTML = `<button class="btn btn-secondary" onclick="exportToExcel()">Download Excel</button><label class="btn btn-primary">Upload Excel<input type="file" id="excel-upload" accept=".xlsx, .xls" style="display:none" onchange="importFromExcel(event)"></label>`;
+  masterView.appendChild(toolBar);
+
+  const table = document.createElement('table');
+  table.className = 'data-table';
+  table.innerHTML = `<thead><tr><th>Item</th><th>Part No.</th><th>Description</th><th>Safety Quantity</th><th>Current Quantity</th><th>Last Modified</th><th>Order Quantity</th><th>order status</th><th>Order ETA</th></tr></thead>`;
+  
+  inventory.forEach((i, index) => {
+    const row = table.insertRow();
+    row.innerHTML = `<td>${index + 1}</td><td>${i.name}</td><td>${i.desc}</td><td>${i.safety}</td><td class="${i.qty < i.safety ? 'low-stock' : ''}">${i.qty}</td><td>${i.lastMod}</td><td>${i.orderQty || '-'}</td><td><span class="status-tag ${i.qty < i.safety ? 'low-stock' : ''}">${i.status}</span></td><td>${i.eta || '-'}</td>`;
+  });
+  masterView.appendChild(table);
+  container.appendChild(masterView);
 }
 
-function updateQty(index, val) {
-  state.sessionData[index].qty = parseInt(val);
+function renderActivity(container) {
+  const table = document.createElement('table');
+  table.className = 'data-table';
+  table.innerHTML = `<thead><tr><th>Time</th><th>Operator</th><th>Type</th><th>Part No.</th><th>Qty</th></tr></thead>`;
+  activities.forEach(a => {
+    const row = table.insertRow();
+    row.innerHTML = `<td>${a.time}</td><td>${a.op}</td><td>${a.type}</td><td>${a.item}</td><td>${a.qty}</td>`;
+  });
+  container.appendChild(table);
+}
+
+/* --- DATABASE & AUTH LOGIC --- */
+async function handleAuth() {
+  const email = document.getElementById('user-input').value;
+  const password = document.getElementById('pass-input').value;
+  
+  state.isLoading = true; state.loadingMsg = "Authenticating..."; render();
+
+  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    state.loginError = error.message;
+    state.isLoading = false;
+    render();
+  } else {
+    state.currentUser = data.user;
+    state.loginError = '';
+    state.screen = 'mode_select';
+    state.window = (email.includes('yj')) ? 'master' : 'display';
+    state.isLoading = false;
+    await loadData();
+  }
 }
 
 async function loadData() {
   const { data: invData, error: invError } = await supabaseClient.from('inventory').select('*').order('part_no', { ascending: true });
+  const { data: actData, error: actError } = await supabaseClient.from('activities').select('*').order('created_at', { ascending: false }).limit(50);
+
   if (!invError) {
     inventory = invData.map(d => ({
       id: d.id, name: d.part_no, desc: d.description, safety: d.safety_qty,
@@ -218,34 +271,142 @@ async function loadData() {
       orderQty: d.order_qty, eta: d.order_eta
     }));
   }
+
+  if (!actError) {
+    activities = actData.map(a => ({
+      time: new Date(a.created_at).toLocaleString(), op: a.operator,
+      type: a.type, item: a.part_no, qty: a.qty
+    }));
+  }
+
   render();
 }
 
-async function handleAuth() {
-  const email = document.getElementById('user-input').value;
-  const password = document.getElementById('pass-input').value;
-  state.isLoading = true; render();
-  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-  if (error) { alert(error.message); state.isLoading = false; render(); }
-  else { state.currentUser = data.user; state.screen = 'mode_select'; state.window = email.includes('yj') ? 'master' : 'display'; loadData(); }
-}
-
 async function finish() {
-  state.isLoading = true; render();
-  for (const item of state.sessionData) {
-    if(item.qty === 0) continue;
-    const target = inventory.find(i => i.name === item.name);
-    const newQty = (state.mode === 'DRAW') ? target.qty - item.qty : target.qty + item.qty;
-    await supabaseClient.from('inventory').update({ current_qty: newQty, last_modified: new Date().toISOString().split('T')[0] }).eq('part_no', item.name);
-    await supabaseClient.from('activities').insert([{ operator: state.currentUser.email, type: state.mode, part_no: item.name, qty: item.qty }]);
+  state.isLoading = true; state.loadingMsg = "Syncing with Cloud..."; render();
+
+  try {
+    for (const item of state.sessionData) {
+      const target = inventory.find(i => i.name === item.name);
+      if (!target) continue;
+      
+      const newQty = (state.mode === 'DRAW') ? target.qty - item.qty : target.qty + item.qty;
+
+      await supabaseClient.from('inventory').update({ 
+        current_qty: newQty, 
+        status: newQty < target.safety ? 'Pending' : 'OK',
+        last_modified: new Date().toISOString().split('T')[0]
+      }).eq('part_no', item.name);
+
+      await supabaseClient.from('activities').insert([{ 
+        operator: state.currentUser.email, type: state.mode, 
+        part_no: item.name, qty: item.qty 
+      }]);
+    }
+    state.screen = 'finished';
+  } catch (err) {
+    console.error("Sync Failed:", err);
+  } finally {
+    state.isLoading = false;
+    state.sessionData = [];
+    render();
+    setTimeout(() => { logout(); loadData(); }, 3000);
   }
-  state.screen = 'finished'; state.isLoading = false; render();
-  setTimeout(() => { logout(); loadData(); }, 3000);
 }
 
-function logout() { state.currentUser = null; state.screen = 'login'; state.window = 'display'; state.sessionData = []; render(); }
+/* --- EXCEL HELPERS --- */
+function exportToExcel() {
+  const now = new Date();
+  const dateStr = now.toISOString().split('T')[0];
+  const timeStr = now.getHours().toString().padStart(2, '0') + now.getMinutes().toString().padStart(2, '0');
+  
+  const data = inventory.map((item, index) => ({
+    "Item": index + 1, "Part No.": item.name, "Description": item.desc,
+    "Safety Quantity": item.safety, "Current Quantity": item.qty,
+    "Last Modified": item.lastMod, "Order Quantity": item.orderQty,
+    "order status": item.status, "Order ETA": item.eta
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(data);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Master Inventory");
+  XLSX.writeFile(workbook, `STIMS_MasterSheet_${dateStr}_${timeStr}.xlsx`);
+}
+
+async function importFromExcel(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const data = new Uint8Array(e.target.result);
+    const workbook = XLSX.read(data, { type: 'array' });
+    const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+
+    state.isLoading = true; state.loadingMsg = "Bulk Uploading to Cloud..."; render();
+
+    for (const row of json) {
+      await supabaseClient.from('inventory').upsert({
+        part_no: row["Part No."],
+        description: row["Description"],
+        safety_qty: parseInt(row["Safety Quantity"]) || 0,
+        current_qty: parseInt(row["Current Quantity"]) || 0,
+        last_modified: row["Last Modified"] || new Date().toISOString().split('T')[0],
+        order_qty: parseInt(row["Order Quantity"]) || 0,
+        status: row["order status"] || "OK",
+        order_eta: row["Order ETA"] || "-"
+      }, { onConflict: 'part_no' });
+    }
+
+    state.isLoading = false;
+    await loadData();
+    alert("Database updated and synced successfully!");
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* --- MISC HELPERS --- */
+function logout() { state.currentUser = null; state.screen = 'login'; state.window = 'display'; render(); }
 function setMode(m) { state.mode = m; state.screen = 'session'; render(); }
 
+// Inline Quantity Field Logic with Current Qty capture
+function addFromDropdown() {
+  const select = document.getElementById('item-dropdown');
+  const qtyField = document.getElementById('qty-field');
+  
+  const partNo = select.value;
+  const qty = parseInt(qtyField.value);
+  
+  if (!partNo) return alert("Please select an item first.");
+  if (!qty || qty <= 0) return alert("Please enter a valid quantity.");
+  
+  const target = inventory.find(i => i.name === partNo);
+  
+  // Storing currentQty in session data for display
+  state.sessionData.push({ 
+    name: partNo, 
+    currentQty: target.qty, 
+    qty: qty 
+  });
+  
+  // Clear fields after adding
+  select.selectedIndex = 0;
+  qtyField.value = '';
+  
+  render();
+}
+
+// Session Persistence Listener
+supabaseClient.auth.onAuthStateChange((event, session) => {
+  if (session) {
+    state.currentUser = session.user;
+    state.screen = 'mode_select';
+    state.window = (session.user.email.includes('yj')) ? 'master' : 'display';
+    loadData();
+  }
+});
+
+// INITIAL BOOT
 render();
 </script>
 </body>
