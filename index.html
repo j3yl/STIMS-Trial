@@ -1,0 +1,310 @@
+<!--
+/* ================================================================================
+PROJECT: STIMS (Smart Tooling Inventory Management System)
+AUTHOR: Justin Lim
+DEPT: Design Process Engineering, Molex
+================================================================================
+CHANGELOG (Latest First): 
+
+v4.0.0 — Supabase Integration Fixes
+- Resolved SyntaxError from duplicate variable declarations.
+- Standardized Supabase client naming to 'supabaseClient'.
+- Added column-to-property mapping in loadData for UI compatibility.
+================================================================================
+*/
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STIMS Management Portal</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+  :root {
+    --navy: #0a1628;
+    --navy2: #162d4e;
+    --accent: #2563eb;
+    --green: #15803d;
+    --red: #b91c1c;
+    --bg: #f4f3ef;
+    --surface: #ffffff;
+    --border: #e4e1d8;
+    --border2: #d0cdc4;
+    --text: #1a1a18;
+    --text2: #555550;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  body { font-family: var(--sans); background: var(--bg); margin: 0; color: var(--text); overflow: hidden; }
+  
+  .global-nav { 
+    background: #000; color: #fff; padding: 0 20px; 
+    display: flex; gap: 30px; height: 50px; align-items: center;
+    font-family: var(--mono); font-size: 12px; letter-spacing: 1px;
+  }
+  .global-nav-item { cursor: pointer; opacity: 0.6; transition: 0.2s; position: relative; height: 100%; display: flex; align-items: center; }
+  .global-nav-item.active { opacity: 1; font-weight: 600; }
+  .global-nav-item.active::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: var(--accent); }
+
+  .app-container { height: calc(100vh - 50px); overflow-y: auto; padding: 20px; }
+
+  .cabinet-frame { 
+    max-width: 450px; margin: 0 auto; min-height: 650px; 
+    background: #fff; border: 1px solid var(--border); 
+    border-radius: 16px; position: relative; overflow: hidden;
+    display: flex; flex-direction: column; box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+  }
+  .cabinet-header { background: var(--navy); color: #fff; padding: 16px; display: flex; justify-content: space-between; align-items: center; font-family: var(--mono); font-size: 12px; }
+  .screen { flex: 1; padding: 20px; display: flex; flex-direction: column; }
+  
+  .login-card { margin-top: 40px; padding: 20px; text-align: center; }
+  .form-group { text-align: left; margin-bottom: 15px; }
+  .form-group label { display: block; font-size: 11px; font-family: var(--mono); color: var(--text2); margin-bottom: 5px; }
+  .form-input { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-family: var(--mono); }
+
+  .error-msg { background: #fef2f2; color: var(--red); font-size: 12px; font-family: var(--mono); padding: 10px; border-radius: 6px; border: 1px solid #fecaca; margin-bottom: 20px; display: none; }
+
+  .data-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
+  .data-table th { background: #f8f9fa; padding: 12px; text-align: left; font-family: var(--mono); font-size: 11px; border-bottom: 2px solid var(--border); }
+  .data-table td { padding: 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
+
+  /* Centering exclusively for Master Sheet */
+  .master-view .data-table th, 
+  .master-view .data-table td { text-align: center; }
+
+  /* Button Styling Reset to match image_1992df.png */
+  .btn { padding: 12px 24px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--sans); margin: 0; }
+  .btn-primary { background: var(--navy); color: #fff; }
+  .btn-secondary { background: #fff; border: 1px solid var(--border2); color: var(--text); }
+  .btn-finish { background: var(--green); color: #fff; margin-top: auto; width: 100%; }
+
+  .tool-bar { display: flex; gap: 12px; margin-bottom: 24px; align-items: center; justify-content: flex-start; }
+
+  .overlay { position: absolute; inset: 0; background: var(--navy); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; text-align: center; padding: 40px; }
+  .spinner { width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.1); border-top-color: #fff; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  
+  .status-tag { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-family: var(--mono); }
+  .low-stock { color: var(--red); font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div id="nav-container"></div>
+<div class="app-container" id="main-content"></div>
+
+<script>
+const SUPABASE_URL = 'https://pefdnjtzpuqipywqtrzk.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_zxq_fKEZa_6rNBLP-f4DXA_jUuG7tWn'; // Use the public 'anon' key!
+
+// Use 'supabaseClient' to avoid shadowing the global 'supabase' library
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let inventory = []; 
+let activities = [];
+
+let state = {
+  window: 'display',
+  screen: 'login',
+  currentUser: null,
+  loginError: '',
+  mode: '',
+  sessionData: [],
+  isLoading: false,
+  loadingMsg: ''
+};
+
+/* Core Navigation */
+function switchWindow(win) {
+  state.window = win;
+  render();
+}
+
+function renderNav() {
+  const nav = document.getElementById('nav-container');
+  if (!state.currentUser) { nav.innerHTML = ''; return; }
+
+  let html = `<div class="global-nav">
+    <div class="global-nav-item ${state.window === 'display' ? 'active' : ''}" onclick="switchWindow('display')">DISPLAY</div>`;
+  
+  if (state.currentUser.role === 'admin' || state.currentUser.email.includes('yj')) {
+    html += `
+      <div class="global-nav-item ${state.window === 'master' ? 'active' : ''}" onclick="switchWindow('master')">MASTER SHEET</div>
+      <div class="global-nav-item ${state.window === 'activity' ? 'active' : ''}" onclick="switchWindow('activity')">ACTIVITY</div>`;
+  }
+  
+  html += `<div style="margin-left:auto; font-size:10px; opacity:0.5; cursor:pointer" onclick="logout()">LOGOUT</div></div>`;
+  nav.innerHTML = html;
+}
+
+function render() {
+  const container = document.getElementById('main-content');
+  container.innerHTML = '';
+  renderNav();
+
+  if (state.window === 'display') renderDisplay(container);
+  else if (state.window === 'master') renderMaster(container);
+  else if (state.window === 'activity') renderActivity(container);
+}
+
+/* UI Rendering Functions */
+function renderDisplay(container) {
+  const frame = document.createElement('div');
+  frame.className = 'cabinet-frame';
+
+  if (state.isLoading) {
+    frame.innerHTML = `<div class="overlay"><div class="spinner"></div><p>${state.loadingMsg}</p></div>`;
+  } else if (state.screen === 'finished') {
+    frame.innerHTML = `<div class="overlay" style="background:#fff;color:var(--navy)"><h1>Finished, thank you!</h1><p>Cabinet Locked.</p></div>`;
+  } else if (state.screen === 'login') {
+    frame.innerHTML = `
+      <div class="screen">
+        <div class="login-card">
+          <h2 style="margin-bottom:30px">⚡ STIMS LOGIN</h2>
+          <div class="error-msg" id="error-box" style="${state.loginError ? 'display:block' : 'display:none'}">${state.loginError}</div>
+          <div class="form-group">
+            <label>EMAIL / USERNAME</label>
+            <input type="text" id="user-input" class="form-input" placeholder="Enter email" onkeyup="if(event.key==='Enter') handleAuth()">
+          </div>
+          <div class="form-group">
+            <label>PASSWORD</label>
+            <input type="password" id="pass-input" class="form-input" placeholder="••••" onkeyup="if(event.key==='Enter') handleAuth()">
+          </div>
+          <button class="btn btn-primary" style="width:100%" onclick="handleAuth()">Login</button>
+        </div>
+      </div>`;
+  } else if (state.screen === 'mode_select') {
+    frame.innerHTML = `<div class="cabinet-header"><span>SELECT ACTION</span><span>${state.currentUser.email}</span></div><div class="screen"><div style="display:grid; gap:15px; margin-top:40px"><button class="btn btn-secondary" style="height:100px; width:100%" onclick="setMode('DRAW')">DRAW (OUT)</button><button class="btn btn-secondary" style="height:100px; width:100%" onclick="setMode('REPLENISH')">REPLENISH (IN)</button></div></div>`;
+  } else if (state.screen === 'session') {
+    const rows = state.sessionData.map(r => `<tr><td>${r.name}</td><td>${r.qty}</td></tr>`).join('');
+    frame.innerHTML = `<div class="cabinet-header"><span>${state.mode} MODE</span></div><div class="screen"><button class="btn btn-primary" onclick="scanItem()">Scan Item QR</button><table class="data-table" style="margin-top:20px"><thead><tr><th>Part No.</th><th>Qty</th></tr></thead><tbody>${rows}</tbody></table><button class="btn btn-finish" onclick="finish()">FINISH & CLOSE DOOR</button></div>`;
+  }
+
+  container.appendChild(frame);
+}
+
+function renderMaster(container) {
+  const masterView = document.createElement('div');
+  masterView.className = 'master-view';
+  const toolBar = document.createElement('div');
+  toolBar.className = 'tool-bar';
+  toolBar.innerHTML = `<button class="btn btn-secondary" onclick="exportToExcel()">Download Excel</button><label class="btn btn-primary">Upload Excel<input type="file" id="excel-upload" accept=".xlsx, .xls" style="display:none" onchange="importFromExcel(event)"></label>`;
+  masterView.appendChild(toolBar);
+
+  const table = document.createElement('table');
+  table.className = 'data-table';
+  table.innerHTML = `<thead><tr><th>Item</th><th>Part No.</th><th>Description</th><th>Safety Quantity</th><th>Current Quantity</th><th>Last Modified</th><th>Order Quantity</th><th>order status</th><th>Order ETA</th></tr></thead>`;
+  
+  inventory.forEach((i, index) => {
+    const row = table.insertRow();
+    row.innerHTML = `<td>${index + 1}</td><td>${i.name}</td><td>${i.desc}</td><td>${i.safety}</td><td class="${i.qty < i.safety ? 'low-stock' : ''}">${i.qty}</td><td>${i.lastMod}</td><td>${i.orderQty || '-'}</td><td><span class="status-tag ${i.qty < i.safety ? 'low-stock' : ''}">${i.status}</span></td><td>${i.eta || '-'}</td>`;
+  });
+  masterView.appendChild(table);
+  container.appendChild(masterView);
+}
+
+function renderActivity(container) {
+  const table = document.createElement('table');
+  table.className = 'data-table';
+  table.innerHTML = `<thead><tr><th>Time</th><th>Operator</th><th>Type</th><th>Part No.</th><th>Qty</th></tr></thead>`;
+  activities.forEach(a => {
+    const row = table.insertRow();
+    row.innerHTML = `<td>${a.time}</td><td>${a.op}</td><td>${a.type}</td><td>${a.item}</td><td>${a.qty}</td>`;
+  });
+  container.appendChild(table);
+}
+
+/* Auth & Data Logic */
+async function handleAuth() {
+  const email = document.getElementById('user-input').value;
+  const password = document.getElementById('pass-input').value;
+  
+  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    state.loginError = "Invalid Login Credentials";
+    render();
+  } else {
+    state.currentUser = data.user;
+    state.loginError = '';
+    state.screen = 'mode_select';
+    state.window = (email.includes('yj')) ? 'master' : 'display';
+    await loadData();
+  }
+}
+
+async function loadData() {
+  const { data, error } = await supabaseClient.from('inventory').select('*').order('part_no', { ascending: true });
+
+  if (error) {
+    console.error('Error loading inventory:', error);
+  } else {
+    // Mapping Database columns to UI property names
+    inventory = data.map(d => ({
+      id: d.id,
+      name: d.part_no, 
+      desc: d.description,
+      safety: d.safety_qty,
+      qty: d.current_qty,
+      status: d.status,
+      lastMod: d.last_modified,
+      orderQty: d.order_qty,
+      eta: d.order_eta
+    }));
+    render();
+  }
+}
+
+async function finish() {
+  state.isLoading = true; state.loadingMsg = "Syncing with Cloud..."; render();
+
+  try {
+    for (const item of state.sessionData) {
+      const target = inventory.find(i => i.name === item.name);
+      const newQty = (state.mode === 'DRAW') ? target.qty - item.qty : target.qty + item.qty;
+
+      await supabaseClient.from('inventory').update({ 
+        current_qty: newQty, 
+        status: newQty < target.safety ? 'Pending' : 'OK',
+        last_modified: new Date().toISOString().split('T')[0]
+      }).eq('part_no', item.name);
+
+      await supabaseClient.from('activities').insert([{ 
+        operator: state.currentUser.email, 
+        type: state.mode, 
+        part_no: item.name, 
+        qty: item.qty 
+      }]);
+    }
+    state.screen = 'finished';
+  } catch (err) {
+    console.error("Sync Failed:", err);
+  } finally {
+    state.isLoading = false;
+    render();
+    setTimeout(() => { logout(); loadData(); }, 3000);
+  }
+}
+
+/* Helpers */
+function logout() { state.currentUser = null; state.loginError = ''; state.screen = 'login'; state.window = 'display'; render(); }
+function setMode(m) { state.mode = m; state.screen = 'session'; render(); }
+function scanItem() {
+  const item = inventory[Math.floor(Math.random()*inventory.length)];
+  const qty = prompt(`Part Found: ${item.name}. Enter Quantity:`, "1");
+  if(qty) {
+    state.sessionData.push({ id: item.id, name: item.name, qty: parseInt(qty) });
+    render();
+  }
+}
+
+// Start with initial load
+loadData();
+</script>
+</body>
+</html>
