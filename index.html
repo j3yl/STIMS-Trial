@@ -163,7 +163,7 @@ function renderDisplay(container) {
           <div class="error-msg" id="error-box" style="${state.loginError ? 'display:block' : 'display:none'}">${state.loginError}</div>
           <div class="form-group">
             <label>EMAIL</label>
-            <input type="text" id="user-input" class="form-input" placeholder="e.g. yj@molex.com" onkeyup="if(event.key==='Enter') handleAuth()">
+            <input type="text" id="user-input" class="form-input" placeholder="e.g. name@molex.com" onkeyup="if(event.key==='Enter') handleAuth()">
           </div>
           <div class="form-group">
             <label>PASSWORD</label>
@@ -216,7 +216,7 @@ function renderMaster(container) {
 
   const table = document.createElement('table');
   table.className = 'data-table';
-  table.innerHTML = `<thead><tr><th>Item</th><th>Part No.</th><th>Description</th><th>Safety Quantity</th><th>Current Quantity</th><th>Last Modified</th><th>Order Quantity</th><th>order status</th><th>Order ETA</th></tr></thead>`;
+  table.innerHTML = `<thead><tr><th>Item</th><th>Part No.</th><th>Description</th><th>Safety Quantity</th><th>Current Quantity</th><th>Last Modified</th><th>Order Quantity</th><th>Order Status</th><th>Order ETA</th></tr></thead>`;
   
   inventory.forEach((i, index) => {
     const row = table.insertRow();
