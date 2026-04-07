@@ -68,9 +68,20 @@ v4.0.0 — Supabase Integration Fixes
   .screen { flex: 1; padding: 20px; display: flex; flex-direction: column; }
   
   .login-card { margin-top: 40px; padding: 20px; text-align: center; }
-  .form-group { text-align: left; margin-bottom: 15px; }
+  .form-group { text-align: left; margin-bottom: 15px; width: 100%; }
   .form-group label { display: block; font-size: 11px; font-family: var(--mono); color: var(--text2); margin-bottom: 5px; }
-  .form-input { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; font-family: var(--mono); }
+  
+  /* Dropdown Styling */
+  .form-input { 
+    width: 100%; 
+    padding: 12px; 
+    border: 1px solid var(--border); 
+    border-radius: 8px; 
+    box-sizing: border-box; 
+    font-family: var(--mono); 
+    background: white;
+  }
+  select.form-input { appearance: auto; cursor: pointer; }
 
   .error-msg { background: #fef2f2; color: var(--red); font-size: 12px; font-family: var(--mono); padding: 10px; border-radius: 6px; border: 1px solid #fecaca; margin-bottom: 20px; display: none; }
 
@@ -174,7 +185,7 @@ function renderDisplay(container) {
           <div class="error-msg" id="error-box" style="${state.loginError ? 'display:block' : 'display:none'}">${state.loginError}</div>
           <div class="form-group">
             <label>EMAIL</label>
-            <input type="text" id="user-input" class="form-input" placeholder="e.g. name@molex.com" onkeyup="if(event.key==='Enter') handleAuth()">
+            <input type="text" id="user-input" class="form-input" placeholder="e.g. yj@molex.com" onkeyup="if(event.key==='Enter') handleAuth()">
           </div>
           <div class="form-group">
             <label>PASSWORD</label>
@@ -186,8 +197,27 @@ function renderDisplay(container) {
   } else if (state.screen === 'mode_select') {
     frame.innerHTML = `<div class="cabinet-header"><span>SELECT ACTION</span><span>${state.currentUser.email}</span></div><div class="screen"><div style="display:grid; gap:15px; margin-top:40px"><button class="btn btn-secondary" style="height:100px; width:100%" onclick="setMode('DRAW')">DRAW (OUT)</button><button class="btn btn-secondary" style="height:100px; width:100%" onclick="setMode('REPLENISH')">REPLENISH (IN)</button></div></div>`;
   } else if (state.screen === 'session') {
+    // Dropdown for selecting parts
+    const partOptions = inventory.map(i => `<option value="${i.name}">${i.name} — ${i.desc}</option>`).join('');
     const rows = state.sessionData.map(r => `<tr><td>${r.name}</td><td>${r.qty}</td></tr>`).join('');
-    frame.innerHTML = `<div class="cabinet-header"><span>${state.mode} MODE</span></div><div class="screen"><button class="btn btn-primary" style="width:100%" onclick="scanItem()">Scan Item QR</button><table class="data-table" style="margin-top:20px"><thead><tr><th>Part No.</th><th>Qty</th></tr></thead><tbody>${rows}</tbody></table><button class="btn btn-finish" onclick="finish()">FINISH & CLOSE DOOR</button></div>`;
+    
+    frame.innerHTML = `
+      <div class="cabinet-header"><span>${state.mode} MODE</span></div>
+      <div class="screen">
+        <div class="form-group">
+          <label>SELECT FROM LIST</label>
+          <select id="item-dropdown" class="form-input">
+            <option value="" disabled selected>Choose a tool...</option>
+            ${partOptions}
+          </select>
+          <button class="btn btn-primary" style="width:100%; margin-top:10px" onclick="addFromDropdown()">Add to List</button>
+        </div>
+        <table class="data-table" style="margin-top:20px">
+          <thead><tr><th>Part No.</th><th>Qty</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <button class="btn btn-finish" onclick="finish()">FINISH & CLOSE DOOR</button>
+      </div>`;
   }
 
   container.appendChild(frame);
@@ -248,10 +278,7 @@ async function handleAuth() {
 }
 
 async function loadData() {
-  // 1. Fetch Inventory
   const { data: invData, error: invError } = await supabaseClient.from('inventory').select('*').order('part_no', { ascending: true });
-  
-  // 2. Fetch Activity Logs
   const { data: actData, error: actError } = await supabaseClient.from('activities').select('*').order('created_at', { ascending: false }).limit(50);
 
   if (!invError) {
@@ -282,14 +309,12 @@ async function finish() {
       
       const newQty = (state.mode === 'DRAW') ? target.qty - item.qty : target.qty + item.qty;
 
-      // Update Database
       await supabaseClient.from('inventory').update({ 
         current_qty: newQty, 
         status: newQty < target.safety ? 'Pending' : 'OK',
         last_modified: new Date().toISOString().split('T')[0]
       }).eq('part_no', item.name);
 
-      // Log Activity
       await supabaseClient.from('activities').insert([{ 
         operator: state.currentUser.email, type: state.mode, 
         part_no: item.name, qty: item.qty 
@@ -361,12 +386,17 @@ async function importFromExcel(event) {
 function logout() { state.currentUser = null; state.screen = 'login'; state.window = 'display'; render(); }
 function setMode(m) { state.mode = m; state.screen = 'session'; render(); }
 
-function scanItem() {
-  if (inventory.length === 0) return alert("Inventory not loaded yet.");
-  const item = inventory[Math.floor(Math.random()*inventory.length)];
-  const qty = prompt(`Part Found: ${item.name}\n${item.desc}\n\nEnter Quantity:`, "1");
+// New Dropdown Logic
+function addFromDropdown() {
+  const select = document.getElementById('item-dropdown');
+  const partNo = select.value;
+  if (!partNo) return alert("Please select an item first.");
+  
+  const target = inventory.find(i => i.name === partNo);
+  const qty = prompt(`Enter quantity for ${partNo}:\n${target.desc}`, "1");
+  
   if(qty && !isNaN(qty)) {
-    state.sessionData.push({ name: item.name, qty: parseInt(qty) });
+    state.sessionData.push({ name: partNo, qty: parseInt(qty) });
     render();
   }
 }
