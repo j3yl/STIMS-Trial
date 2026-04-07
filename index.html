@@ -78,11 +78,9 @@ v4.0.0 — Supabase Integration Fixes
   .data-table th { background: #f8f9fa; padding: 12px; text-align: left; font-family: var(--mono); font-size: 11px; border-bottom: 2px solid var(--border); }
   .data-table td { padding: 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
 
-  /* Centering exclusively for Master Sheet */
   .master-view .data-table th, 
   .master-view .data-table td { text-align: center; }
 
-  /* Button Styling Reset to match image_1992df.png */
   .btn { padding: 12px 24px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--sans); margin: 0; }
   .btn-primary { background: var(--navy); color: #fff; }
   .btn-secondary { background: #fff; border: 1px solid var(--border2); color: var(--text); }
@@ -104,11 +102,13 @@ v4.0.0 — Supabase Integration Fixes
 <div class="app-container" id="main-content"></div>
 
 <script>
+// CONFIGURATION
 const SUPABASE_URL = 'https://pefdnjtzpuqipywqtrzk.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_zxq_fKEZa_6rNBLP-f4DXA_jUuG7tWn'; // Justin: Swap this for the ANON key!
+const SUPABASE_ANON_KEY = 'sb_publishable_zxq_fKEZa_6rNBLP-f4DXA_jUuG7tWn'; 
 
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// APP STATE
 let inventory = []; 
 let activities = [];
 
@@ -123,7 +123,7 @@ let state = {
   loadingMsg: ''
 };
 
-/* Core Navigation */
+/* --- NAVIGATION --- */
 function switchWindow(win) {
   state.window = win;
   render();
@@ -136,7 +136,6 @@ function renderNav() {
   let html = `<div class="global-nav">
     <div class="global-nav-item ${state.window === 'display' ? 'active' : ''}" onclick="switchWindow('display')">DISPLAY</div>`;
   
-  // Use email-based role check as a fallback for now
   if (state.currentUser.email && state.currentUser.email.includes('yj')) {
     html += `
       <div class="global-nav-item ${state.window === 'master' ? 'active' : ''}" onclick="switchWindow('master')">MASTER SHEET</div>
@@ -158,7 +157,7 @@ function render() {
   else if (state.window === 'activity') renderActivity(container);
 }
 
-/* UI Rendering Functions */
+/* --- UI COMPONENTS --- */
 function renderDisplay(container) {
   const frame = document.createElement('div');
   frame.className = 'cabinet-frame';
@@ -174,8 +173,8 @@ function renderDisplay(container) {
           <h2 style="margin-bottom:30px">⚡ STIMS LOGIN</h2>
           <div class="error-msg" id="error-box" style="${state.loginError ? 'display:block' : 'display:none'}">${state.loginError}</div>
           <div class="form-group">
-            <label>EMAIL / USERNAME</label>
-            <input type="text" id="user-input" class="form-input" placeholder="Enter email" onkeyup="if(event.key==='Enter') handleAuth()">
+            <label>EMAIL</label>
+            <input type="text" id="user-input" class="form-input" placeholder="e.g. yj@molex.com" onkeyup="if(event.key==='Enter') handleAuth()">
           </div>
           <div class="form-group">
             <label>PASSWORD</label>
@@ -188,40 +187,202 @@ function renderDisplay(container) {
     frame.innerHTML = `<div class="cabinet-header"><span>SELECT ACTION</span><span>${state.currentUser.email}</span></div><div class="screen"><div style="display:grid; gap:15px; margin-top:40px"><button class="btn btn-secondary" style="height:100px; width:100%" onclick="setMode('DRAW')">DRAW (OUT)</button><button class="btn btn-secondary" style="height:100px; width:100%" onclick="setMode('REPLENISH')">REPLENISH (IN)</button></div></div>`;
   } else if (state.screen === 'session') {
     const rows = state.sessionData.map(r => `<tr><td>${r.name}</td><td>${r.qty}</td></tr>`).join('');
-    frame.innerHTML = `<div class="cabinet-header"><span>${state.mode} MODE</span></div><div class="screen"><button class="btn btn-primary" onclick="scanItem()">Scan Item QR</button><table class="data-table" style="margin-top:20px"><thead><tr><th>Part No.</th><th>Qty</th></tr></thead><tbody>${rows}</tbody></table><button class="btn btn-finish" onclick="finish()">FINISH & CLOSE DOOR</button></div>`;
+    frame.innerHTML = `<div class="cabinet-header"><span>${state.mode} MODE</span></div><div class="screen"><button class="btn btn-primary" style="width:100%" onclick="scanItem()">Scan Item QR</button><table class="data-table" style="margin-top:20px"><thead><tr><th>Part No.</th><th>Qty</th></tr></thead><tbody>${rows}</tbody></table><button class="btn btn-finish" onclick="finish()">FINISH & CLOSE DOOR</button></div>`;
   }
 
   container.appendChild(frame);
 }
 
-/* Copy-paste the rest of your renderMaster, renderActivity, export/import, handleAuth, and finish functions here... */
+function renderMaster(container) {
+  const masterView = document.createElement('div');
+  masterView.className = 'master-view';
+  const toolBar = document.createElement('div');
+  toolBar.className = 'tool-bar';
+  toolBar.innerHTML = `<button class="btn btn-secondary" onclick="exportToExcel()">Download Excel</button><label class="btn btn-primary">Upload Excel<input type="file" id="excel-upload" accept=".xlsx, .xls" style="display:none" onchange="importFromExcel(event)"></label>`;
+  masterView.appendChild(toolBar);
 
-async function loadData() {
-  try {
-    const { data, error } = await supabaseClient.from('inventory').select('*').order('part_no', { ascending: true });
-    if (error) throw error;
+  const table = document.createElement('table');
+  table.className = 'data-table';
+  table.innerHTML = `<thead><tr><th>Item</th><th>Part No.</th><th>Description</th><th>Safety Quantity</th><th>Current Quantity</th><th>Last Modified</th><th>Order Quantity</th><th>order status</th><th>Order ETA</th></tr></thead>`;
+  
+  inventory.forEach((i, index) => {
+    const row = table.insertRow();
+    row.innerHTML = `<td>${index + 1}</td><td>${i.name}</td><td>${i.desc}</td><td>${i.safety}</td><td class="${i.qty < i.safety ? 'low-stock' : ''}">${i.qty}</td><td>${i.lastMod}</td><td>${i.orderQty || '-'}</td><td><span class="status-tag ${i.qty < i.safety ? 'low-stock' : ''}">${i.status}</span></td><td>${i.eta || '-'}</td>`;
+  });
+  masterView.appendChild(table);
+  container.appendChild(masterView);
+}
 
-    inventory = data.map(d => ({
-      id: d.id,
-      name: d.part_no, 
-      desc: d.description,
-      safety: d.safety_qty,
-      qty: d.current_qty,
-      status: d.status,
-      lastMod: d.last_modified,
-      orderQty: d.order_qty,
-      eta: d.order_eta
-    }));
-  } catch (err) {
-    console.warn('Database not ready. Running in offline mode.');
-  } finally {
-    render(); 
+function renderActivity(container) {
+  const table = document.createElement('table');
+  table.className = 'data-table';
+  table.innerHTML = `<thead><tr><th>Time</th><th>Operator</th><th>Type</th><th>Part No.</th><th>Qty</th></tr></thead>`;
+  activities.forEach(a => {
+    const row = table.insertRow();
+    row.innerHTML = `<td>${a.time}</td><td>${a.op}</td><td>${a.type}</td><td>${a.item}</td><td>${a.qty}</td>`;
+  });
+  container.appendChild(table);
+}
+
+/* --- DATABASE & AUTH LOGIC --- */
+async function handleAuth() {
+  const email = document.getElementById('user-input').value;
+  const password = document.getElementById('pass-input').value;
+  
+  state.isLoading = true; state.loadingMsg = "Authenticating..."; render();
+
+  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    state.loginError = error.message;
+    state.isLoading = false;
+    render();
+  } else {
+    state.currentUser = data.user;
+    state.loginError = '';
+    state.screen = 'mode_select';
+    state.window = (email.includes('yj')) ? 'master' : 'display';
+    state.isLoading = false;
+    await loadData();
   }
 }
 
-// BOOTSTRAP: Initial Render + Data Load
+async function loadData() {
+  // 1. Fetch Inventory
+  const { data: invData, error: invError } = await supabaseClient.from('inventory').select('*').order('part_no', { ascending: true });
+  
+  // 2. Fetch Activity Logs
+  const { data: actData, error: actError } = await supabaseClient.from('activities').select('*').order('created_at', { ascending: false }).limit(50);
+
+  if (!invError) {
+    inventory = invData.map(d => ({
+      id: d.id, name: d.part_no, desc: d.description, safety: d.safety_qty,
+      qty: d.current_qty, status: d.status, lastMod: d.last_modified,
+      orderQty: d.order_qty, eta: d.order_eta
+    }));
+  }
+
+  if (!actError) {
+    activities = actData.map(a => ({
+      time: new Date(a.created_at).toLocaleString(), op: a.operator,
+      type: a.type, item: a.part_no, qty: a.qty
+    }));
+  }
+
+  render();
+}
+
+async function finish() {
+  state.isLoading = true; state.loadingMsg = "Syncing with Cloud..."; render();
+
+  try {
+    for (const item of state.sessionData) {
+      const target = inventory.find(i => i.name === item.name);
+      if (!target) continue;
+      
+      const newQty = (state.mode === 'DRAW') ? target.qty - item.qty : target.qty + item.qty;
+
+      // Update Database
+      await supabaseClient.from('inventory').update({ 
+        current_qty: newQty, 
+        status: newQty < target.safety ? 'Pending' : 'OK',
+        last_modified: new Date().toISOString().split('T')[0]
+      }).eq('part_no', item.name);
+
+      // Log Activity
+      await supabaseClient.from('activities').insert([{ 
+        operator: state.currentUser.email, type: state.mode, 
+        part_no: item.name, qty: item.qty 
+      }]);
+    }
+    state.screen = 'finished';
+  } catch (err) {
+    console.error("Sync Failed:", err);
+  } finally {
+    state.isLoading = false;
+    state.sessionData = [];
+    render();
+    setTimeout(() => { logout(); loadData(); }, 3000);
+  }
+}
+
+/* --- EXCEL HELPERS --- */
+function exportToExcel() {
+  const now = new Date();
+  const dateStr = now.toISOString().split('T')[0];
+  const timeStr = now.getHours().toString().padStart(2, '0') + now.getMinutes().toString().padStart(2, '0');
+  
+  const data = inventory.map((item, index) => ({
+    "Item": index + 1, "Part No.": item.name, "Description": item.desc,
+    "Safety Quantity": item.safety, "Current Quantity": item.qty,
+    "Last Modified": item.lastMod, "Order Quantity": item.orderQty,
+    "order status": item.status, "Order ETA": item.eta
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(data);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Master Inventory");
+  XLSX.writeFile(workbook, `STIMS_MasterSheet_${dateStr}_${timeStr}.xlsx`);
+}
+
+async function importFromExcel(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const data = new Uint8Array(e.target.result);
+    const workbook = XLSX.read(data, { type: 'array' });
+    const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+
+    state.isLoading = true; state.loadingMsg = "Bulk Uploading to Cloud..."; render();
+
+    for (const row of json) {
+      await supabaseClient.from('inventory').upsert({
+        part_no: row["Part No."],
+        description: row["Description"],
+        safety_qty: parseInt(row["Safety Quantity"]) || 0,
+        current_qty: parseInt(row["Current Quantity"]) || 0,
+        last_modified: row["Last Modified"] || new Date().toISOString().split('T')[0],
+        order_qty: parseInt(row["Order Quantity"]) || 0,
+        status: row["order status"] || "OK",
+        order_eta: row["Order ETA"] || "-"
+      }, { onConflict: 'part_no' });
+    }
+
+    state.isLoading = false;
+    await loadData();
+    alert("Database updated and synced successfully!");
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* --- MISC HELPERS --- */
+function logout() { state.currentUser = null; state.screen = 'login'; state.window = 'display'; render(); }
+function setMode(m) { state.mode = m; state.screen = 'session'; render(); }
+
+function scanItem() {
+  if (inventory.length === 0) return alert("Inventory not loaded yet.");
+  const item = inventory[Math.floor(Math.random()*inventory.length)];
+  const qty = prompt(`Part Found: ${item.name}\n${item.desc}\n\nEnter Quantity:`, "1");
+  if(qty && !isNaN(qty)) {
+    state.sessionData.push({ name: item.name, qty: parseInt(qty) });
+    render();
+  }
+}
+
+// Session Persistence Listener
+supabaseClient.auth.onAuthStateChange((event, session) => {
+  if (session) {
+    state.currentUser = session.user;
+    state.screen = 'mode_select';
+    state.window = (session.user.email.includes('yj')) ? 'master' : 'display';
+    loadData();
+  }
+});
+
+// INITIAL BOOT
 render();
-loadData();
 </script>
 </body>
 </html>
